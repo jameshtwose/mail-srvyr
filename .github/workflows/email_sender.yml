@@ -1,0 +1,29 @@
+name: run ./send_emails.py manually
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repo content
+        uses: actions/checkout@v2 # checkout the repository content
+
+      - name: setup python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10' # install the python version needed
+
+      - name: install python packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: execute py script
+        env:
+            GMAIL_SENDER_EMAIL: ${{ secrets.GMAIL_SENDER_EMAIL }}
+            GMAIL_SENDER_PASS_KEY: ${{ secrets.GMAIL_SENDER_PASS_KEY }}
+            GMAIL_RECEIVER_EMAIL: ${{ secrets.GMAIL_RECEIVER_EMAIL }}
+            IMAP_SERVER: ${{ secrets.IMAP_SERVER }}
+        run: |
+          python send_emails.py
