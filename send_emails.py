@@ -1,6 +1,5 @@
 # %%
 import os
-import pandas as pd
 from dotenv import load_dotenv, find_dotenv
 from utils import mail_sender, email_content_template
 
@@ -39,8 +38,9 @@ main_table = f"""
 email_content = email_content_template(
     email_body=main_table,
 )
+receiver_email = os.getenv("GMAIL_RECEIVER_EMAIL")
 mail_sender(
-    to_address=os.getenv("GMAIL_RECEIVER_EMAIL"),
+    to_address=receiver_email,
     subject="An email from mail-srvyr",
     html_body=email_content,
 )

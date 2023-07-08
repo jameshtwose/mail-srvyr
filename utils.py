@@ -1,10 +1,15 @@
 import os
+import pandas as pd
 import smtplib
 import ssl
 from email.mime.base import MIMEBase
 from email import encoders
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from imapclient import IMAPClient
+import email
+from bs4 import BeautifulSoup
+
 
 def mail_sender(
     to_address=os.getenv("GMAIL_RECEIVER_EMAIL"),
@@ -80,7 +85,7 @@ def mail_sender(
         server.sendmail(sender_email, to_address, message.as_string())
         print("mail_sender() completed successfully.")
 
-        
+
 def email_content_template(email_body: str):
     """
     Creates the email template.
@@ -119,3 +124,70 @@ def email_content_template(email_body: str):
     </body>
     </html>
     """
+
+
+def request_email_info(email_amount: int = 50):
+    """Request email data from IMAP server and return as a pandas DataFrame
+
+    Parameters
+    ----------
+    email_amount : int
+        Amount of emails to request from IMAP server. Default is 50. Used to minimize time spent requesting data.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame containing email data
+
+    """
+    server = IMAPClient(
+        host=os.environ["IMAP_SERVER"], ssl=True, port=993, use_uid=True
+    )
+    server.login(
+        username=os.environ["GMAIL_SENDER_EMAIL"],
+        password=os.environ["GMAIL_SENDER_PASS_KEY"],
+    )
+
+    select_info = server.select_folder("INBOX")
+    print("%d messages in INBOX" % select_info[b"EXISTS"])
+
+    messages = server.search()
+
+    info_df = pd.DataFrame()
+    for msgid, data in server.fetch(messages[-email_amount:], ["ENVELOPE"]).items():
+        envelope = data[b"ENVELOPE"]
+        tmp_df = pd.DataFrame(
+            {
+                "msgID": msgid,
+                "from": str(envelope.from_[0].name)[1:].replace("'", ""),
+                "subject": envelope.subject.decode(),
+                "date_received": envelope.date,
+            },
+            index=[0],
+        )
+        info_df = pd.concat([info_df, tmp_df])
+    _ = info_df.reset_index(drop=True, inplace=True)
+
+    # %%
+    body_df = pd.DataFrame()
+    for msgid, data in server.fetch(messages[-email_amount:], ["BODY[TEXT]"]).items():
+        body = data[b"BODY[TEXT]"]
+        body_obj = email.message_from_bytes(body)
+        msg = body_obj.get_payload(decode=True)
+        if msg:
+            try:
+                soup = BeautifulSoup(msg.decode(encoding="windows-1254"), "html.parser")
+            except UnicodeDecodeError:
+                soup = BeautifulSoup(msg.decode(encoding="utf-8"), "html.parser")
+
+            table_content = soup.find("table")
+            if table_content:
+                current_df = (
+                    pd.read_html(table_content.prettify())[0]
+                    .set_index(0)
+                    .T.reset_index(drop=True)
+                    .pipe(lambda x: x.apply(lambda col: col.str.replace("= ", "")))
+                )
+                body_df = pd.concat([body_df, current_df])
+
+    return select_info[b"EXISTS"], info_df, body_df

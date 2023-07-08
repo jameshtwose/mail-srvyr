@@ -1,2 +1,5 @@
 pandas
 python-dotenv
+imapclient
+beautifulsoup4
+lxml
